@@ -1,8 +1,8 @@
 # Onboarding
 
 Work through this in the customer's repository. kai refuses to build the box
-while a secret it declares is missing, so nothing is billed before 1–2 are
-done.
+while a secret it declares is missing, so nothing is billed before 1, 2 and
+4 are done.
 
 - [ ] **1. Tailnet.** The customer creates a Tailscale tailnet and invites
   you as an Admin. In its access controls add
@@ -35,10 +35,26 @@ done.
   issue its key), or a key from your org's workspace for this customer, with
   a cap. It becomes the `anthropic-api-key` secret once the box runs Liton.
 
-- [ ] **4. Backups.** A bucket at a provider other than Vultr and a key
-  scoped to it, and a restic password kept in your password manager. They
-  become the `restic-env` and `restic-password` secrets with kai-box's
-  backup module.
+- [ ] **4. Backups.** In Backblaze B2 (not Vultr, so one provider's outage
+  or a closed account can't take the backups with the box), make a private
+  bucket for this customer and an application key that can read and write
+  only that bucket. Then write the repository and the key, and make the
+  restic password. Keep the password in your password manager too: without
+  it no backup can be restored.
+
+  ```sh
+  printf '%s\n' \
+    "RESTIC_REPOSITORY=s3:https://$B2_S3_ENDPOINT/$BUCKET/<slug>" \
+    "AWS_ACCESS_KEY_ID=$KEY_ID" \
+    "AWS_SECRET_ACCESS_KEY=$APPLICATION_KEY" \
+    | kai secret set box restic-env
+  head -c 32 /dev/urandom | base64 | kai secret set box restic-password
+  ```
+
+  `$B2_S3_ENDPOINT` is the bucket's S3 endpoint, such as
+  `s3.us-east-005.backblazeb2.com`. The box backs up `/var/lib` and `/data`
+  every night at about 03:00, keeping 7 daily, 5 weekly and 12 monthly
+  snapshots, and restores the latest snapshot once a month to test it.
 
 - [ ] **5. Status.** A check in Healthchecks for this box; its ping URL
   becomes the `status-ping-url` secret with kai-box's status module.

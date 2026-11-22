@@ -13,6 +13,7 @@ the skeleton `aion customer new` copies into each customer's repository.
 | `status.nix` | `kai-box-status`, the box's status as JSON (failed units, disk, memory, revision, generation, backups, routes), pushed to Healthchecks every 15 minutes. |
 | `routes.nix` | Projects under paths of the Caddy site on the box's tailnet name, from `kaiBox.routes` in `boxes/box.nix`. |
 | `projects.nix` | Each project of `kaiBox.projects` (in `boxes/box.nix`) in its own NixOS container: fixed address, memory and CPU limits, no outbound network unless `egress = "any"`, no host secrets, `/data` backed up and restore-tested, and a route at `/<name>/` when it has a `port`. |
+| `tests/projects.nix` | A NixOS VM test of `projects.nix` with the backup, status and routes modules: `nix-build tests/projects.nix --arg pkgs 'import <nixpkgs> { }'`. |
 | `client/` | The customer's `Kaifile.roc`, `boxes/box.nix`, `revision.nix` and `ONBOARDING.md`. The `aion/` files there are placeholders, so `kai check` works in `client/` itself. |
 | `flake.nix` | Empty: kai locks an `Input` as a flake. |
 

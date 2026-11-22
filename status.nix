@@ -12,11 +12,15 @@
 #     "inputs": { "kai-box": "abc123..." },
 #     "disk": [{ "mount": "/", "size": ..., "used": ..., "percent": 41 }],
 #     "memory": { "total": ..., "available": ..., "swap_total": ..., "swap_free": ... },
+#     "guests": [{ "name": "crm", "state": "active", "address": "10.77.0.2",
+#                  "memory_mib": 2048, "cpus": 2, "egress": "none", "port": 8080,
+#                  "memory_current": ... }],
 #     "extra": { "backup-b2": { "time": "...", "result": "success" }, "caddy": {...} } }
 #
 # extra holds every /etc/kai/status.d, /run/kai/status.d and
 # /var/lib/kai/status.d/NAME.json, as NAME: backup.nix writes its backups'
 # and restore tests' results there and routes.nix the Caddy routes.
+# guests lists projects.nix's containers with their units' state.
 # This is the shape kai's planned `kai machine status` prints; once kai
 # ships it, kai-box-status gives way to it.
 { config, lib, pkgs, inputs, ... }:
@@ -47,6 +51,17 @@ let
         /^SwapTotal:/ { st = $2 } /^SwapFree:/ { sf = $2 }
         END { printf "{\"total\":%d,\"available\":%d,\"swap_total\":%d,\"swap_free\":%d}", t*1024, a*1024, st*1024, sf*1024 }
       ' /proc/meminfo)
+      # Each project container projects.nix declares, with its unit's state.
+      guests='[]'
+      if [ -f /etc/kai/guests.json ]; then
+        while read -r guest; do
+          name=$(jq -r .name <<<"$guest")
+          state=$(systemctl show -P ActiveState "container@$name.service")
+          used=$(systemctl show -P MemoryCurrent "container@$name.service")
+          guests=$(jq -c --argjson guest "$guest" --arg state "$state" --arg used "$used" \
+            '. + [$guest + { state: $state, memory_current: ($used | tonumber? // null) }]' <<<"$guests")
+        done < <(jq -c '.[]' /etc/kai/guests.json)
+      fi
       extra='{}'
       for fragment in /etc/kai/status.d/*.json /run/kai/status.d/*.json /var/lib/kai/status.d/*.json; do
         [ -f "$fragment" ] || continue
@@ -66,16 +81,18 @@ let
         --argjson disk "$disk" \
         --argjson memory "$memory" \
         --argjson extra "$extra" \
+        --argjson guests "$guests" \
         --argjson full ${toString cfg.diskPercent} '
         { schema: 1, machine: $built.machine, time: $time, health: $health,
           failed_units: $failed,
           problems: (
             (if $health == "running" then [] else ["the system is \($health)"] end)
             + ($failed | map("\(.) failed"))
-            + ($disk | map(select(.percent >= $full) | "\(.mount) is \(.percent)% full"))),
+            + ($disk | map(select(.percent >= $full) | "\(.mount) is \(.percent)% full"))
+            + ($guests | map(select(.state != "active") | "project \(.name) is \(.state)"))),
           generation: ($generation | tonumber? // null),
           revision: $built.revision, nixos: $built.nixos, inputs: $built.inputs,
-          disk: $disk, memory: $memory, extra: $extra }'
+          guests: $guests, disk: $disk, memory: $memory, extra: $extra }'
     '';
   };
 in

@@ -64,7 +64,14 @@ kaifile = Kaifile.new([
 					Services([Caddy([Site(site, Files("/etc/kai-box/www"))])]),
 					InputModules(
 						"kai-box",
-						["profiles/vultr.nix", "tailnet.nix", "backup.nix", "status.nix", "routes.nix"],
+						[
+							"profiles/vultr.nix",
+							"tailnet.nix",
+							"backup.nix",
+							"status.nix",
+							"routes.nix",
+							"projects.nix",
+						],
 					),
 					Modules(["revision.nix", "boxes/box.nix"]),
 				],

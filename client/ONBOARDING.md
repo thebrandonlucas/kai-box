@@ -1,8 +1,8 @@
 # Onboarding
 
 Work through this in the customer's repository. kai refuses to build the box
-while a secret it declares is missing, so nothing is billed before 1, 2 and
-4 are done.
+while a secret it declares is missing, so nothing is billed before 1, 2, 4
+and 5 are done.
 
 - [ ] **1. Tailnet.** The customer creates a Tailscale tailnet and invites
   you as an Admin. In its access controls add
@@ -56,8 +56,23 @@ while a secret it declares is missing, so nothing is billed before 1, 2 and
   every night at about 03:00, keeping 7 daily, 5 weekly and 12 monthly
   snapshots, and restores the latest snapshot once a month to test it.
 
-- [ ] **5. Status.** A check in Healthchecks for this box; its ping URL
-  becomes the `status-ping-url` secret with kai-box's status module.
+- [ ] **5. Status.** The box pings your Healthchecks: its status every 15
+  minutes, each backup and each monthly restore test. Its checks are
+  created on their first ping, named `<slug>-box-status`,
+  `<slug>-box-backup-b2` and `<slug>-box-restore-test-b2`, in the project
+  whose ping key the box holds. Give the box Healthchecks' ping URL and
+  that project's ping key (Project Settings → Ping key):
+
+  ```sh
+  printf %s "https://$HEALTHCHECKS_HOST/ping" | kai secret set box healthchecks-url
+  printf %s "$PING_KEY" | kai secret set box healthchecks-ping-key
+  ```
+
+  After the first pings arrive, set each check's period: status 15 minutes
+  with 15 minutes' grace, backup 1 day with 6 hours', and restore test
+  `0 0 1 * *` (cron) with 1 day's. The status ping's body is the box's
+  status as JSON, which Healthchecks keeps; on the box `kai-box-status`
+  prints it.
 
 - [ ] **6. SMS (only if the box sends texts).** A2P 10DLC through the SMS
   provider, under the customer's own brand (a subaccount) so it can leave

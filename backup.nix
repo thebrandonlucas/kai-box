@@ -17,14 +17,17 @@
 #   restored from a consistent dump rather than files copied mid-write;
 # - a canary, /var/lib/kai/backup-canary, holding the time each run starts;
 # - /var/lib/kai/status.d/backup-NAME.json after every run, which the
-#   status report carries;
+#   status report carries, and a ping to Healthchecks' check
+#   <hostname>-backup-NAME: start when it begins, then success or fail
+#   with the run's log, so a backup that fails or stops running alerts;
 # - kai-restore-test-NAME, monthly: `restic check` reads a twelfth of the
 #   repository's data (so a year reads all of it), then the latest
 #   snapshot's /var/lib/kai and /data/backup are restored into
 #   /var/lib/kai-restore-test/NAME and verified against the snapshot. The
 #   canary must be younger than kaiBox.backup.maxAgeHours and every dump
-#   must be there and not empty. It writes restore-test-NAME.json, and
-#   fails, leaving the system degraded, when any check does.
+#   must be there and not empty. It writes restore-test-NAME.json, pings
+#   <hostname>-restore-test-NAME the same way, and fails, leaving the
+#   system degraded, when any check does.
 { config, lib, pkgs, ... }:
 let
   cfg = config.kaiBox.backup;
@@ -37,12 +40,20 @@ let
   dumps = cfg.dumps // lib.optionalAttrs (postgres.enable && !(cfg.dumps ? postgresql)) {
     postgresql = "${pkgs.util-linux}/bin/runuser -u postgres -- ${postgres.package}/bin/pg_dumpall";
   };
-  # Writes NAME.json from what systemd tells a unit's ExecStopPost.
+  ping = "${config.kaiBox.healthchecks.ping}/bin/kai-box-ping";
+  # Pings check NAME as a unit starts; its failure is ignored.
+  start = name: "-" + pkgs.writeShellScript "kai-start-${name}" "${ping} ${name} start </dev/null";
+  # Writes NAME.json from what systemd tells a unit's ExecStopPost, and
+  # pings check NAME with the result and this run's log.
   report = name: pkgs.writeShellScript "kai-report-${name}" ''
     mkdir -p ${reports}
     printf '{"time":"%s","result":"%s"}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SERVICE_RESULT" \
       > ${reports}/${name}.json
+    signal=fail
+    [ "$SERVICE_RESULT" = success ] && signal=
+    ${config.systemd.package}/bin/journalctl -o cat --no-pager \
+      _SYSTEMD_INVOCATION_ID="$INVOCATION_ID" | tail -c 90000 | ${ping} ${name} $signal
   '';
   repository = backup:
     lib.optionalAttrs (backup.repository != null) { RESTIC_REPOSITORY = backup.repository; }
@@ -64,6 +75,7 @@ let
       EnvironmentFile = lib.optional (backup.environmentFile != null) backup.environmentFile;
       CacheDirectory = "kai-restore-test";
       StateDirectory = "kai-restore-test";
+      ExecStartPre = [ (start "restore-test-${name}") ];
       ExecStopPost = [ (report "restore-test-${name}") ];
     };
     script = ''
@@ -94,6 +106,8 @@ let
   };
 in
 {
+  imports = [ ./healthchecks.nix ];
+
   options.kaiBox.backup = {
     paths = lib.mkOption {
       type = lib.types.listOf lib.types.str;
@@ -168,6 +182,7 @@ in
           requires = [ "kai-backup-dump.service" ];
           after = [ "kai-backup-dump.service" ];
           serviceConfig.ExecStartPre = lib.mkBefore [
+            (start "backup-${name}")
             (pkgs.writeShellScript "kai-backup-canary" "date +%s > ${canary}")
           ];
           serviceConfig.ExecStopPost = [ (report "backup-${name}") ];

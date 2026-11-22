@@ -9,8 +9,17 @@ and 5 are done.
 
   ```json
   "tagOwners": { "tag:kai-box": ["autogroup:admin"] },
-  "grants": [{ "src": ["autogroup:admin"], "dst": ["tag:kai-box"], "ip": ["*"] }]
+  "grants": [
+    { "src": ["autogroup:admin"], "dst": ["tag:kai-box"], "ip": ["*"] },
+    { "src": ["autogroup:member"], "dst": ["tag:kai-box"], "ip": ["tcp:80", "tcp:443"] }
+  ]
   ```
+
+  The second grant lets the customer's staff reach the box's web services,
+  and nothing else on it. Under DNS, turn on MagicDNS and **HTTPS
+  Certificates**: Caddy serves the projects at
+  `https://<slug>-box.<tailnet>/<project>/` with a certificate from
+  Tailscale.
 
   Under Settings → Keys, generate an auth key: **pre-approved, tagged
   `tag:kai-box`, not ephemeral, not reusable.** Tagged devices have key

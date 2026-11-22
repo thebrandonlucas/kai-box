@@ -1,8 +1,9 @@
 # A customer's Kai box. `aion customer new` copies this directory into the
 # customer's own repository and writes the aion/ files: the customer's slug,
-# the keys that may log in as root and the Operators who can read the
-# secrets. Everything else is this file, the kai-box modules it names and
-# boxes/box.nix, the customer's own projects and routes.
+# the keys that may log in as root, the Operators who can read the secrets
+# and the tailnet's MagicDNS suffix. Everything else is this file, the
+# kai-box modules it names and boxes/box.nix, the customer's own projects
+# and routes.
 #
 # After install the box is reached only over the customer's tailnet, as
 # root@<slug>-box, so `kai machine switch box` applies a change.
@@ -20,10 +21,15 @@ import machine.Machine
 import "aion/name" as name : Str
 import "aion/root-keys" as root_keys : Str
 import "aion/operators" as operators : Str
+import "aion/tailnet" as tailnet : Str
 
 lines = |text| text.split_on("\n").map(Str.trim).keep_if(|line| !line.is_empty())
 
 box = "${name.trim()}-box"
+
+# The box's name on the customer's tailnet, which Caddy serves its projects
+# under, path by path (boxes/box.nix).
+site = "${box}.${tailnet.trim()}"
 
 project : List(Config.Setting)
 project = [
@@ -55,7 +61,11 @@ kaifile = Kaifile.new([
 						Secret("healthchecks-url", []),
 						Secret("healthchecks-ping-key", []),
 					]),
-					InputModules("kai-box", ["profiles/vultr.nix", "tailnet.nix", "backup.nix", "status.nix"]),
+					Services([Caddy([Site(site, Files("/etc/kai-box/www"))])]),
+					InputModules(
+						"kai-box",
+						["profiles/vultr.nix", "tailnet.nix", "backup.nix", "status.nix", "routes.nix"],
+					),
 					Modules(["revision.nix", "boxes/box.nix"]),
 				],
 			),

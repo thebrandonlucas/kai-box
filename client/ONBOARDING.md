@@ -1,16 +1,25 @@
 # Onboarding
 
 Work through this in the customer's repository. kai refuses to build the box
-while a secret it declares is missing, so nothing is billed before 1–2 are
-done.
+while a secret it declares is missing, so nothing is billed before 1, 2, 4
+and 5 are done.
 
 - [ ] **1. Tailnet.** The customer creates a Tailscale tailnet and invites
   you as an Admin. In its access controls add
 
   ```json
   "tagOwners": { "tag:kai-box": ["autogroup:admin"] },
-  "grants": [{ "src": ["autogroup:admin"], "dst": ["tag:kai-box"], "ip": ["*"] }]
+  "grants": [
+    { "src": ["autogroup:admin"], "dst": ["tag:kai-box"], "ip": ["*"] },
+    { "src": ["autogroup:member"], "dst": ["tag:kai-box"], "ip": ["tcp:80", "tcp:443"] }
+  ]
   ```
+
+  The second grant lets the customer's staff reach the box's web services,
+  and nothing else on it. Under DNS, turn on MagicDNS and **HTTPS
+  Certificates**: Caddy serves the projects at
+  `https://<slug>-box.<tailnet>/<project>/` with a certificate from
+  Tailscale.
 
   Under Settings → Keys, generate an auth key: **pre-approved, tagged
   `tag:kai-box`, not ephemeral, not reusable.** Tagged devices have key
@@ -35,13 +44,44 @@ done.
   issue its key), or a key from your org's workspace for this customer, with
   a cap. It becomes the `anthropic-api-key` secret once the box runs Liton.
 
-- [ ] **4. Backups.** A bucket at a provider other than Vultr and a key
-  scoped to it, and a restic password kept in your password manager. They
-  become the `restic-env` and `restic-password` secrets with kai-box's
-  backup module.
+- [ ] **4. Backups.** In Backblaze B2 (not Vultr, so one provider's outage
+  or a closed account can't take the backups with the box), make a private
+  bucket for this customer and an application key that can read and write
+  only that bucket. Then write the repository and the key, and make the
+  restic password. Keep the password in your password manager too: without
+  it no backup can be restored.
 
-- [ ] **5. Status.** A check in Healthchecks for this box; its ping URL
-  becomes the `status-ping-url` secret with kai-box's status module.
+  ```sh
+  printf '%s\n' \
+    "RESTIC_REPOSITORY=s3:https://$B2_S3_ENDPOINT/$BUCKET/<slug>" \
+    "AWS_ACCESS_KEY_ID=$KEY_ID" \
+    "AWS_SECRET_ACCESS_KEY=$APPLICATION_KEY" \
+    | kai secret set box restic-env
+  head -c 32 /dev/urandom | base64 | kai secret set box restic-password
+  ```
+
+  `$B2_S3_ENDPOINT` is the bucket's S3 endpoint, such as
+  `s3.us-east-005.backblazeb2.com`. The box backs up `/var/lib` and `/data`
+  every night at about 03:00, keeping 7 daily, 5 weekly and 12 monthly
+  snapshots, and restores the latest snapshot once a month to test it.
+
+- [ ] **5. Status.** The box pings your Healthchecks: its status every 15
+  minutes, each backup and each monthly restore test. Its checks are
+  created on their first ping, named `<slug>-box-status`,
+  `<slug>-box-backup-b2` and `<slug>-box-restore-test-b2`, in the project
+  whose ping key the box holds. Give the box Healthchecks' ping URL and
+  that project's ping key (Project Settings → Ping key):
+
+  ```sh
+  printf %s "https://$HEALTHCHECKS_HOST/ping" | kai secret set box healthchecks-url
+  printf %s "$PING_KEY" | kai secret set box healthchecks-ping-key
+  ```
+
+  After the first pings arrive, set each check's period: status 15 minutes
+  with 15 minutes' grace, backup 1 day with 6 hours', and restore test
+  `0 0 1 * *` (cron) with 1 day's. The status ping's body is the box's
+  status as JSON, which Healthchecks keeps; on the box `kai-box-status`
+  prints it.
 
 - [ ] **6. SMS (only if the box sends texts).** A2P 10DLC through the SMS
   provider, under the customer's own brand (a subaccount) so it can leave

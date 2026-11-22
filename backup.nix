@@ -22,10 +22,11 @@
 #   with the run's log, so a backup that fails or stops running alerts;
 # - kai-restore-test-NAME, monthly: `restic check` reads a twelfth of the
 #   repository's data (so a year reads all of it), then the latest
-#   snapshot's /var/lib/kai and /data/backup are restored into
-#   /var/lib/kai-restore-test/NAME and verified against the snapshot. The
-#   canary must be younger than kaiBox.backup.maxAgeHours and every dump
-#   must be there and not empty. It writes restore-test-NAME.json, pings
+#   snapshot's /var/lib/kai (projects' data included), /data/backup and
+#   kaiBox.backup.required are restored into /var/lib/kai-restore-test/NAME
+#   and verified against the snapshot. The canary must be younger than
+#   kaiBox.backup.maxAgeHours, every dump must be there and not empty, and
+#   every required path there. It writes restore-test-NAME.json, pings
 #   <hostname>-restore-test-NAME the same way, and fails, leaving the
 #   system degraded, when any check does.
 { config, lib, pkgs, ... }:
@@ -85,7 +86,8 @@ let
       rm -rf "$restored"
       trap 'rm -rf "$restored"' EXIT
       restic restore latest --target "$restored" --verify \
-        --include /var/lib/kai --include ${dumpDir}
+        --include /var/lib/kai --include ${dumpDir} \
+        ${lib.concatMapStrings (path: " --include ${lib.escapeShellArg path}") cfg.required}
       if [ ! -f "$restored${canary}" ]; then
         echo "the latest snapshot holds no ${canary}: back up /var/lib/kai" >&2
         exit 1
@@ -98,6 +100,12 @@ let
       for dump in ${lib.escapeShellArgs (lib.attrNames dumps)}; do
         if [ ! -s "$restored${dumpDir}/$dump" ]; then
           echo "the latest snapshot's dump ${dumpDir}/$dump is missing or empty" >&2
+          exit 1
+        fi
+      done
+      for path in ${lib.escapeShellArgs cfg.required}; do
+        if [ ! -e "$restored$path" ]; then
+          echo "the latest snapshot holds no $path" >&2
           exit 1
         fi
       done
@@ -132,6 +140,11 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ "--keep-daily 7" "--keep-weekly 5" "--keep-monthly 12" ];
       description = "The snapshots the b2 backup keeps, as restic forget's options.";
+    };
+    required = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "/[A-Za-z0-9._/-]+");
+      default = [ ];
+      description = "Paths every snapshot must hold, which the restore test restores and checks. projects.nix adds each project's data.";
     };
     maxAgeHours = lib.mkOption {
       type = lib.types.ints.positive;

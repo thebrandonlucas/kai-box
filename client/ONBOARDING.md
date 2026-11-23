@@ -118,3 +118,40 @@ kai update
   Then check that the box is on the tailnet and at the collector. A join
   that failed or timed out has usually consumed the single-use auth key:
   generate a new one and set it as in step 1 before installing again.
+
+- [ ] **8. Liton.** The staff's rooms are at the site's root,
+  `https://<slug>-box.<tailnet>/`, for devices on the tailnet alone. The
+  roles are `Litonfile.roc`'s: `admin` (the office manager, who invites and
+  removes staff), `staff` and `agent`. Change it in a Liton v0.1.0
+  checkout as its header says, and commit the `liton.setup.json` it gives.
+
+  Pair your own device first, as an operator. On the box, `liton pair`
+  prints a code and a link on the site, good for 10 minutes:
+
+  ```sh
+  ssh root@<slug>-box liton pair
+  ```
+
+  Open the link on your device and open the Rooms, which makes the
+  browser's key. Then make that key the owner, an operator no one can
+  remove:
+
+  ```sh
+  ssh root@<slug>-box "sqlite3 /var/lib/liton/liton.db \"SELECT name, pubkey FROM devices WHERE pubkey != ''\""
+  echo <your pubkey> > aion/liton-owner
+  git commit -am "Make the operator Liton's owner" && kai machine switch box
+  ```
+
+  Invite the office manager in Settings → People: their name, the `admin`
+  role and the rooms they sign into. Send them the link it shows; it works
+  once, within 7 days. They invite the staff the same way, as `staff`, or
+  you do.
+
+  Each person opens their link, and later `https://<slug>-box.<tailnet>/`,
+  on a device signed in to the customer's tailnet with the Tailscale app;
+  their phone can add it to the home screen. Anywhere else the name does
+  not resolve.
+
+  Liton has no command to create rooms yet. When it does, creating the
+  customer's first rooms (such as `#office` and `#dispatch`) belongs here,
+  before the invites that name them.

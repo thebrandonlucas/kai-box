@@ -16,8 +16,10 @@
 #   The host forwards nothing for it, so it reaches the host's open ports
 #   (none but Tailscale's) and nothing else, unless egress is "any": then
 #   it reaches the internet, but still not the tailnet, another project or
-#   a private address. Only the host reaches it, and through routes.nix the
-#   tailnet reaches its port;
+#   a private address. The kai-projects nftables table drops all of that
+#   ahead of NixOS's firewall and NAT. Only the host reaches it, and
+#   through routes.nix the tailnet reaches its port. A box with projects
+#   uses nftables and filters forwarding; one without keeps its firewall;
 # - runs as its own range of user IDs (privateUsers "pick"), so its root is
 #   nobody on the host;
 # - sees none of the host's secrets: /run/secrets and the host key are not
@@ -38,6 +40,7 @@ let
   dataDir = name: "/var/lib/kai/guests/${name}";
   routed = lib.filterAttrs (_: p: p.port != null) projects;
   egressing = lib.attrNames (lib.filterAttrs (_: p: p.egress == "any") projects);
+  isolated = lib.attrNames (lib.filterAttrs (_: p: p.egress == "none") projects);
   addresses = lib.mapAttrsToList (_: p: p.address) projects;
   project = { name, ... }: {
     options = {
@@ -79,13 +82,6 @@ in
   };
 
   config = lib.mkMerge [
-    {
-      # The forward chain drops what no rule below accepts, whichever
-      # table Tailscale adds its own rules to.
-      networking.nftables.enable = true;
-      networking.firewall.filterForward = true;
-      systemd.services.tailscaled.environment.TS_DEBUG_FIREWALL_MODE = "nftables";
-    }
     (lib.mkIf (projects != { }) {
       assertions = [
         {
@@ -125,18 +121,40 @@ in
           MemorySwapMax = "0";
           CPUQuota = "${toString (p.cpus * 100)}%";
         };
-      }) projects;
+      }) projects // {
+        # Tailscale adds its rules to the nftables tables, not iptables.
+        tailscaled.environment.TS_DEBUG_FIREWALL_MODE = "nftables";
+      };
+
+      # The forward chain drops what no rule accepts, whichever table
+      # Tailscale adds its own rules to. A box without projects keeps
+      # its firewall as it was.
+      networking.nftables.enable = true;
+      networking.firewall.filterForward = true;
 
       networking.nat = lib.mkIf (egressing != [ ]) {
         enable = true;
         internalInterfaces = map (name: "ve-${name}") egressing;
       };
       networking.firewall.extraForwardRules = lib.concatMapStrings (name: ''
-        iifname "ve-${name}" oifname "tailscale0" drop
-        iifname "ve-${name}" oifname "ve-*" drop
-        iifname "ve-${name}" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } drop
         iifname "ve-${name}" accept
       '') egressing;
+      # What a project may not reach, in a table of its own hooked before
+      # nixos-fw's forward chain and NAT's accept: a drop in any chain is
+      # final, so no rule nixpkgs adds, in whatever order, lets it through.
+      networking.nftables.tables.kai-projects = {
+        family = "inet";
+        content = ''
+          chain forward {
+            type filter hook forward priority filter - 1; policy accept;
+            iifname "ve-*" meta nfproto ipv6 drop
+            iifname "ve-*" oifname "tailscale0" drop
+            iifname "ve-*" oifname "ve-*" drop
+            iifname "ve-*" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } drop
+        '' + lib.concatMapStrings (name: "  iifname \"ve-${name}\" drop\n") isolated + ''
+          }
+        '';
+      };
 
       kaiBox.routes.paths = lib.mapAttrs' (name: p:
         lib.nameValuePair "/${name}" "${p.address}:${toString p.port}") routed;

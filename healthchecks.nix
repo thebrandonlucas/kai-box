@@ -22,8 +22,9 @@ let
       signal=''${2:+/$2}
       url=$(cat ${lib.escapeShellArg cfg.urlFile})
       key=$(cat ${lib.escapeShellArg cfg.pingKeyFile})
-      # Healthchecks keeps the first 100 kB of a body.
-      if ! head -c 100000 | curl -fsS -m 30 --retry 3 --data-binary @- \
+      # Healthchecks keeps the first 100 kB of a body. Three tries of 15 s at
+      # most: under a minute, inside the 90 s systemd gives an ExecStopPost.
+      if ! head -c 100000 | curl -fsS --connect-timeout 10 -m 15 --retry 2 --data-binary @- \
         "$url/$key/$slug$signal?create=1" >/dev/null; then
         echo "kai-box-ping: could not ping $slug$signal" >&2
       fi

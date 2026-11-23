@@ -10,11 +10,12 @@ the skeleton `aion customer new` copies into each customer's repository.
 | `tailnet.nix` | Join the customer's tailnet with the `tailscale-authkey` secret; nothing open to the internet, Caddy included; console login with `root-password-hash`. |
 | `backup.nix` | Nightly restic backups of `/var/lib` and `/data` to the B2 repository in `restic-env`, encrypted with `restic-password`; database dumps to `/data/backup` first; a monthly restore test. |
 | `healthchecks.nix` | `kai-box-ping`, which backup.nix and status.nix use to ping the operator's Healthchecks with the `healthchecks-url` and `healthchecks-ping-key` secrets. |
-| `status.nix` | `kai-box-status`, the box's status as JSON (failed units, disk, memory, revision, generation, backups, routes), pushed to Healthchecks every 15 minutes. |
-| `routes.nix` | Projects under paths of the Caddy site on the box's tailnet name, from `kaiBox.routes` in `boxes/box.nix`. |
+| `status.nix` | `kai-box-status`, the box's status as JSON (failed units, disk, memory, revision, generation, services such as Liton, projects, backups, routes), pushed to Healthchecks every 15 minutes. |
+| `routes.nix` | Projects under paths of the Caddy site on the box's tailnet name, from `kaiBox.routes` in `boxes/box.nix`, and their index at `/projects/`. |
+| `liton.nix` | Liton, the staff's rooms, at the site's root: the daemon on 127.0.0.1 behind Caddy, with the customer's `liton.setup.json` and the owner's key in `aion/liton-owner`; its database dumped to `/data/backup/liton.sql` before each backup; its state in the status. |
 | `projects.nix` | Each project of `kaiBox.projects` (in `boxes/box.nix`) in its own NixOS container: fixed address, memory and CPU limits, no outbound network unless `egress = "any"`, no host secrets, `/data` backed up and restore-tested, and a route at `/<name>/` when it has a `port`. |
 | `tests/projects.nix` | A NixOS VM test of `projects.nix` with the backup, status and routes modules: `nix-build tests/projects.nix --arg pkgs 'import <nixpkgs> { }'`. |
-| `client/` | The customer's `Kaifile.roc`, `boxes/box.nix`, `revision.nix` and `ONBOARDING.md`. The `aion/` files there are placeholders, so `kai check` works in `client/` itself. |
+| `client/` | The customer's `Kaifile.roc`, `boxes/box.nix`, `Litonfile.roc` and the `liton.setup.json` it evaluates to, `revision.nix` and `ONBOARDING.md`. The `aion/` files there are placeholders, so `kai check` works in `client/` itself. |
 | `flake.nix` | Empty: kai locks an `Input` as a flake. |
 
 Customers pin a revision in their `.kai/lock.json`, and `kai update kai-box`

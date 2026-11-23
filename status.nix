@@ -12,6 +12,7 @@
 #     "inputs": { "kai-box": "abc123..." },
 #     "disk": [{ "mount": "/", "size": ..., "used": ..., "percent": 41 }],
 #     "memory": { "total": ..., "available": ..., "swap_total": ..., "swap_free": ... },
+#     "services": { "liton": "active" },
 #     "guests": [{ "name": "crm", "state": "active", "address": "10.77.0.2",
 #                  "memory_mib": 2048, "cpus": 2, "egress": "none", "port": 8080,
 #                  "memory_current": ... }],
@@ -21,6 +22,8 @@
 # /var/lib/kai/status.d/NAME.json, as NAME: backup.nix writes its backups'
 # and restore tests' results there and routes.nix the Caddy routes.
 # guests lists projects.nix's containers with their units' state.
+# services gives the state of each of kaiBox.status.services, such as
+# liton.nix's liton; one not active is a problem.
 # This is the shape kai's planned `kai machine status` prints; once kai
 # ships it, kai-box-status gives way to it.
 { config, lib, pkgs, inputs, ... }:
@@ -62,6 +65,12 @@ let
             '. + [$guest + { state: $state, memory_current: ($used | tonumber? // null) }]' <<<"$guests")
         done < <(jq -c '.[]' /etc/kai/guests.json)
       fi
+      services='{}'
+      units=(${lib.escapeShellArgs cfg.services})
+      for service in "''${units[@]}"; do
+        state=$(systemctl show -P ActiveState "$service.service")
+        services=$(jq -c --arg name "$service" --arg state "$state" '.[$name] = $state' <<<"$services")
+      done
       extra='{}'
       for fragment in /etc/kai/status.d/*.json /run/kai/status.d/*.json /var/lib/kai/status.d/*.json; do
         [ -f "$fragment" ] || continue
@@ -82,6 +91,7 @@ let
         --argjson memory "$memory" \
         --argjson extra "$extra" \
         --argjson guests "$guests" \
+        --argjson services "$services" \
         --argjson full ${toString cfg.diskPercent} '
         { schema: 1, machine: $built.machine, time: $time, health: $health,
           failed_units: $failed,
@@ -89,10 +99,11 @@ let
             (if $health == "running" then [] else ["the system is \($health)"] end)
             + ($failed | map("\(.) failed"))
             + ($disk | map(select(.percent >= $full) | "\(.mount) is \(.percent)% full"))
-            + ($guests | map(select(.state != "active") | "project \(.name) is \(.state)"))),
+            + ($guests | map(select(.state != "active") | "project \(.name) is \(.state)"))
+            + ($services | to_entries | map(select(.value != "active") | "\(.key) is \(.value)"))),
           generation: ($generation | tonumber? // null),
           revision: $built.revision, nixos: $built.nixos, inputs: $built.inputs,
-          guests: $guests, disk: $disk, memory: $memory, extra: $extra }'
+          services: $services, guests: $guests, disk: $disk, memory: $memory, extra: $extra }'
     '';
   };
 in
@@ -109,6 +120,11 @@ in
       type = lib.types.ints.between 1 100;
       default = 90;
       description = "How full a disk may be, in percent, before the report is a failure.";
+    };
+    services = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[a-zA-Z0-9@._-]+");
+      default = [ ];
+      description = "Services whose state the report gives; one not active is a problem. liton.nix adds liton.";
     };
   };
 

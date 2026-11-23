@@ -8,12 +8,22 @@ and 5 are done.
   you as an Admin. In its access controls add
 
   ```json
-  "tagOwners": { "tag:kai-box": ["autogroup:admin"] },
+  "tagOwners": {
+    "tag:kai-box": ["autogroup:admin"],
+    "tag:<operator-tag>": ["autogroup:admin"]
+  },
   "grants": [
-    { "src": ["autogroup:admin"], "dst": ["tag:kai-box"], "ip": ["*"] },
+    { "src": ["autogroup:admin", "tag:<operator-tag>"], "dst": ["tag:kai-box"], "ip": ["*"] },
     { "src": ["autogroup:member"], "dst": ["tag:kai-box"], "ip": ["tcp:80", "tcp:443"] }
   ]
   ```
+
+  `tag:<operator-tag>` is the tag your own device joins the tailnet with,
+  such as `tag:dev`. A tagged device belongs to its tag, not to you, so it
+  is not in `autogroup:admin` even though you are: without the tag in the
+  first grant your device cannot reach the box. Tailscale refuses a policy
+  naming a tag `tagOwners` does not declare, hence its entry there. Leave it
+  out if your device is not tagged.
 
   The second grant lets the customer's staff reach the box's web services,
   and nothing else on it. Under DNS, turn on MagicDNS and **HTTPS

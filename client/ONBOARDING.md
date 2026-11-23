@@ -4,6 +4,13 @@ Work through this in the customer's repository. kai refuses to build the box
 while a secret it declares is missing, so nothing is billed before 1, 2, 4
 and 5 are done.
 
+First lock the repository's inputs: `kai secret set` needs the lock
+file, so run this before any of the steps below.
+
+```sh
+kai update
+```
+
 - [ ] **1. Tailnet.** The customer creates a Tailscale tailnet and invites
   you as an Admin. In its access controls add
 
@@ -104,9 +111,10 @@ and 5 are done.
 - [ ] **7. Install.**
 
   ```sh
-  kai update
   aion customer machine new <slug> box
   git add -A && git commit -m "Install the box"
   ```
 
-  Then check that the box is on the tailnet and at the collector.
+  Then check that the box is on the tailnet and at the collector. A join
+  that failed or timed out has usually consumed the single-use auth key:
+  generate a new one and set it as in step 1 before installing again.

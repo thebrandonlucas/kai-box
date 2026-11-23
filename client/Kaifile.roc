@@ -1,9 +1,10 @@
 # A customer's Kai box. `aion customer new` copies this directory into the
 # customer's own repository and writes the aion/ files: the customer's slug,
 # the keys that may log in as root, the Operators who can read the secrets
-# and the tailnet's MagicDNS suffix. Everything else is this file, the
-# kai-box modules it names and boxes/box.nix, the customer's own projects
-# and routes.
+# and the tailnet's MagicDNS suffix; aion/liton-owner starts empty, for the
+# operator's key in Liton. Everything else is this file, the kai-box
+# modules it names, boxes/box.nix, the customer's own projects and routes,
+# and Litonfile.roc with the liton.setup.json it evaluates to.
 #
 # After install the box is reached only over the customer's tailnet, as
 # root@<slug>-box, so `kai machine switch box` applies a change.
@@ -27,14 +28,15 @@ lines = |text| text.split_on("\n").map(Str.trim).keep_if(|line| !line.is_empty()
 
 box = "${name.trim()}-box"
 
-# The box's name on the customer's tailnet, which Caddy serves its projects
-# under, path by path (boxes/box.nix).
+# The box's name on the customer's tailnet. Caddy serves Liton, the staff's
+# rooms, at its root and the projects under paths of it (boxes/box.nix).
 site = "${box}.${tailnet.trim()}"
 
 project : List(Config.Setting)
 project = [
 	Name(name.trim()),
 	Input("kai-box", "github:thebrandonlucas/kai-box"),
+	Input("liton", "github:thebrandonlucas/liton/v0.1.0"),
 ]
 
 kaifile = Kaifile.new([
@@ -61,7 +63,8 @@ kaifile = Kaifile.new([
 						Secret("healthchecks-url", []),
 						Secret("healthchecks-ping-key", []),
 					]),
-					Services([Caddy([Site(site, Files("/etc/kai-box/www"))])]),
+					Services([Caddy([Site(site, ReverseProxy("127.0.0.1:8095"))])]),
+					InputModules("liton", ["nix/module.nix"]),
 					InputModules(
 						"kai-box",
 						[
@@ -71,6 +74,7 @@ kaifile = Kaifile.new([
 							"status.nix",
 							"routes.nix",
 							"projects.nix",
+							"liton.nix",
 						],
 					),
 					Modules(["revision.nix", "boxes/box.nix"]),

@@ -4,16 +4,33 @@ Work through this in the customer's repository. kai refuses to build the box
 while a secret it declares is missing, so nothing is billed before 1, 2, 4
 and 5 are done.
 
+First lock the repository's inputs: `kai secret set` needs the lock
+file, so run this before any of the steps below.
+
+```sh
+kai update
+```
+
 - [ ] **1. Tailnet.** The customer creates a Tailscale tailnet and invites
   you as an Admin. In its access controls add
 
   ```json
-  "tagOwners": { "tag:kai-box": ["autogroup:admin"] },
+  "tagOwners": {
+    "tag:kai-box": ["autogroup:admin"],
+    "tag:<operator-tag>": ["autogroup:admin"]
+  },
   "grants": [
-    { "src": ["autogroup:admin"], "dst": ["tag:kai-box"], "ip": ["*"] },
+    { "src": ["autogroup:admin", "tag:<operator-tag>"], "dst": ["tag:kai-box"], "ip": ["*"] },
     { "src": ["autogroup:member"], "dst": ["tag:kai-box"], "ip": ["tcp:80", "tcp:443"] }
   ]
   ```
+
+  `tag:<operator-tag>` is the tag your own device joins the tailnet with,
+  such as `tag:dev`. A tagged device belongs to its tag, not to you, so it
+  is not in `autogroup:admin` even though you are: without the tag in the
+  first grant your device cannot reach the box. Tailscale refuses a policy
+  naming a tag `tagOwners` does not declare, hence its entry there. Leave it
+  out if your device is not tagged.
 
   The second grant lets the customer's staff reach the box's web services,
   and nothing else on it. Under DNS, turn on MagicDNS and **HTTPS
@@ -94,9 +111,47 @@ and 5 are done.
 - [ ] **7. Install.**
 
   ```sh
-  kai update
   aion customer machine new <slug> box
   git add -A && git commit -m "Install the box"
   ```
 
-  Then check that the box is on the tailnet and at the collector.
+  Then check that the box is on the tailnet and at the collector. A join
+  that failed or timed out has usually consumed the single-use auth key:
+  generate a new one and set it as in step 1 before installing again.
+
+- [ ] **8. Liton.** The staff's rooms are at the site's root,
+  `https://<slug>-box.<tailnet>/`, for devices on the tailnet alone. The
+  roles are `Litonfile.roc`'s: `admin` (the office manager, who invites and
+  removes staff), `staff` and `agent`. Change it in a Liton v0.1.0
+  checkout as its header says, and commit the `liton.setup.json` it gives.
+
+  Pair your own device first, as an operator. On the box, `liton pair`
+  prints a code and a link on the site, good for 10 minutes:
+
+  ```sh
+  ssh root@<slug>-box liton pair
+  ```
+
+  Open the link on your device and open the Rooms, which makes the
+  browser's key. Then make that key the owner, an operator no one can
+  remove:
+
+  ```sh
+  ssh root@<slug>-box "sqlite3 /var/lib/liton/liton.db \"SELECT name, pubkey FROM devices WHERE pubkey != ''\""
+  echo <your pubkey> > aion/liton-owner
+  git commit -am "Make the operator Liton's owner" && kai machine switch box
+  ```
+
+  Invite the office manager in Settings → People: their name, the `admin`
+  role and the rooms they sign into. Send them the link it shows; it works
+  once, within 7 days. They invite the staff the same way, as `staff`, or
+  you do.
+
+  Each person opens their link, and later `https://<slug>-box.<tailnet>/`,
+  on a device signed in to the customer's tailnet with the Tailscale app;
+  their phone can add it to the home screen. Anywhere else the name does
+  not resolve.
+
+  Liton has no command to create rooms yet. When it does, creating the
+  customer's first rooms (such as `#office` and `#dispatch`) belongs here,
+  before the invites that name them.

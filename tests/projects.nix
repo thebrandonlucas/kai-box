@@ -117,6 +117,16 @@ pkgs.testers.runNixOSTest {
         box.fail(run("fetch", "curl -sf -m 5 http://10.77.0.2:8080/"))
         box.fail(run("fetch", "curl -sf -m 5 http://192.168.1.2/"))
 
+    with subtest("the isolation holds whatever nixos-fw's forward chain accepts"):
+        box.succeed("nft list chain inet kai-projects forward | grep 'priority filter - 1'")
+        box.succeed("nft insert rule inet nixos-fw forward accept comment kai-test")
+        box.fail(run("web", "curl -sf -m 5 http://203.0.113.1/"))
+        box.fail(run("fetch", "curl -sf -m 5 http://10.77.0.2:8080/"))
+        box.fail(run("fetch", "curl -sf -m 5 http://192.168.1.2/"))
+        box.succeed(run("fetch", "curl -sf -m 10 http://203.0.113.1/ | grep internet"))
+        handle = box.succeed("nft -a list chain inet nixos-fw forward | awk '/comment \"kai-test\"/ { print $NF }'").strip()
+        box.succeed(f"nft delete rule inet nixos-fw forward handle {handle}")
+
     with subtest("Caddy serves a project with a port under /NAME/"):
         box.wait_for_unit("caddy.service")
         box.wait_until_succeeds("curl -skf https://${site}/web/ | grep 'hello from web'", timeout=60)
